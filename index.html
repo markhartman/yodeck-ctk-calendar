@@ -155,7 +155,8 @@ var DEFAULTS = {
   // header
   title:"Upcoming Events", sub:"", logo:"", clock:1, h24:0, footer:1,
   // content
-  group:1, showLoc:1, locSrc:"auto", shortLoc:0, allDay:1, allDayLabel:"All Day",
+  group:1, showLoc:1, locSrc:"auto", shortLoc:0, stripBrackets:0, hidePast:0,
+  allDay:1, allDayLabel:"All Day",
   expand:1, badge:1, q:"", ex:"", empty:"No events scheduled",
   // motion
   speed:26, pause:4, refresh:10,
@@ -267,8 +268,8 @@ function demoRaw(){
   // [dayOffset, start, end, title, location, calIdx, allDaySpanDays]
   var seed=[
     [0,"09:00","10:15","Morning Prayer","Chapel",0],
-    [0,"12:00","13:00","Staff Lunch & Planning","Conference Room A",1],
-    [0,"18:30","20:00","Youth Group","Fellowship Hall",0],
+    [0,"12:00","13:00","Staff Lunch & Planning","Conference Room A (Seats 12)",1],
+    [0,"18:30","20:00","Youth Group","Fellowship Hall [AV required]",0],
     [1,null,null,"Vacation Bible School — Setup Week","Education Wing",1,4],
     [1,"10:00","11:30","Women's Bible Study","Room 201",0],
     [1,"19:00","20:30","Choir Rehearsal","Sanctuary",0],
@@ -331,6 +332,26 @@ function roomsOf(ev){
     .map(function(a){ return a.displayName || ""; })
     .filter(Boolean).join(" • ");
 }
+/* Strips "(…)" and "[…]" chunks — room names often carry capacity, building codes
+   or booking notes in brackets that are noise on a screen. Nested/repeated groups
+   are handled, and leftover separators are tidied up. If stripping would empty the
+   string entirely, the original is kept. */
+function stripBrackets(s){
+  var out = String(s||""), prev, guard = 0;
+  do{
+    prev = out;
+    out = out.replace(/\([^()]*\)/g, " ").replace(/\[[^\[\]]*\]/g, " ");
+  } while(out !== prev && ++guard < 8);
+  out = out.replace(/\s+/g, " ")
+           .replace(/\s+([,;])/g, "$1")                    // no space before punctuation
+           .replace(/([-–—•|,;])\s*(?=[-–—•|,;])/g, "")    // drop a separator left beside another
+           .replace(/^[\s\-–—•|,;]+/, "")                  // trim separators off both ends
+           .replace(/[\s\-–—•|,;]+$/, "")
+           .replace(/\s+/g, " ")
+           .trim();
+  return out || String(s||"").trim();
+}
+
 function locationOf(ev){
   var loc  = (ev.location||"").trim();
   var room = roomsOf(ev);
@@ -340,6 +361,7 @@ function locationOf(ev){
   else if(src==="location")out = loc;
   else if(src==="both")    out = [room, loc].filter(Boolean).join(" — ");
   else                     out = loc || room;              // auto
+  if(Number(C.stripBrackets) && out) out = stripBrackets(out);
   if(Number(C.shortLoc) && out) out = out.split(",")[0].trim();
   return out;
 }
@@ -388,9 +410,33 @@ function normalize(raw, calIdx, winStart, winEnd){
    DISPLAY MODE
    ===================================================================== */
 var DISP = {
-  cals: [], events: [], pending: null, err: "",
+  cals: [], events: [], pending: null, dirty: false, sig: "", err: "",
   updated: null, off: 0, last: 0, hold: 0, copyH: 0, looping: false, raf: null
 };
+
+/* DISP.events holds everything fetched; this is the subset actually drawn.
+   Kept separate so "hide finished" can re-evaluate as the clock moves without
+   waiting for the next calendar fetch. */
+function visibleEvents(){
+  if(!Number(C.hidePast)) return DISP.events.slice();
+  var now = Date.now();
+  return DISP.events.filter(function(e){
+    if(e.allDay) return true;                    // all-day items run until midnight
+    var t = e.end ? +e.end : (e.start ? +e.start : 0);
+    return t > now;
+  });
+}
+
+/* Cheap fingerprint of "what the screen should look like right now" — row count
+   plus which rows are currently in progress. Used to notice when time alone has
+   changed the display. */
+function stateSig(){
+  var evs = visibleEvents(), now = Date.now(), s = evs.length + "|";
+  evs.forEach(function(e){
+    if(!e.allDay && e.start && e.end && now >= +e.start && now <= +e.end) s += e.title + ";";
+  });
+  return s;
+}
 
 function applyTheme(){
   var r = document.documentElement.style;
@@ -454,7 +500,7 @@ function buildShell(){
 }
 
 function listHTML(){
-  var evs = DISP.events.slice();
+  var evs = visibleEvents();
   evs.sort(function(a,b){
     if(a.dayKey!==b.dayKey) return a.dayKey < b.dayKey ? -1 : 1;
     if(a.allDay!==b.allDay) return a.allDay ? -1 : 1;
@@ -505,8 +551,22 @@ function render(){
   var html = listHTML();
   document.getElementById("copyA").innerHTML = html;
   document.getElementById("copyB").innerHTML = html;
+  DISP.sig = stateSig();
+  DISP.dirty = false;
   measure();
   renderFooter();
+}
+
+/* Re-render when the passage of time alone changes what should be on screen —
+   an event finishing under hidePast, or a row starting/stopping being "now".
+   While the list is mid-scroll the redraw waits for the loop to come back to
+   the top, so the screen never jumps. */
+function watchClock(){
+  setInterval(function(){
+    if(stateSig() === DISP.sig) return;
+    if(DISP.looping && DISP.off > 2) DISP.dirty = true;
+    else render();
+  }, 20000);
 }
 
 function measure(){
@@ -537,6 +597,7 @@ function tick(ts){
       DISP.off -= DISP.copyH;
       DISP.hold = ts + Math.max(0,Number(C.pause))*1000;
       if(DISP.pending){ DISP.events = DISP.pending; DISP.pending = null; render(); return; }
+      if(DISP.dirty){ render(); return; }
     }
   }
   document.getElementById("track").style.transform = "translate3d(0,"+(-DISP.off.toFixed(2))+"px,0)";
@@ -613,6 +674,7 @@ function runDisplay(){
 
   buildShell();
   startClock();
+  watchClock();
   load();
   var mins = Math.max(1, Number(C.refresh)||10);
   setInterval(load, mins*60*1000);
@@ -708,7 +770,13 @@ function runConfig(){
        fNum("max","Max events","Hard cap on how many rows are drawn",1,500)+
        fText("q","Only show events containing","Comma-separated. Leave blank for everything.")+
        fText("ex","Hide events containing","Comma-separated, e.g. HOLD, Tentative")+
-       '</div>') +
+       '</div><div class="row">'+
+       fChk("hidePast","Drop events once they have finished")+
+       '</div>'+
+       '<p class="note">With that on, an event disappears within about 20 seconds of its end time, '+
+       'so the top of the board is always what is still to come. All-day events stay up until '+
+       'midnight. Worth raising <b>Days to display</b> to 2 or more so the board does not empty '+
+       'out late in the evening.</p>') +
 
     fs("Header", '<div class="row">'+
        fText("title","Heading")+
@@ -728,12 +796,17 @@ function runConfig(){
        fText("empty","Empty-state message")+
        '</div><div class="row">'+
        fChk("showLoc","Show location / room")+
+       fChk("stripBrackets","Ignore room text in ( ) and [ ]")+
        fChk("shortLoc","Shorten location to text before the first comma")+
        fChk("group","Group under day headings")+
        fChk("allDay","Include all-day events")+
        fChk("expand","Repeat multi-day events on every day")+
        fChk("badge","Show calendar name badge")+
-       '</div>') +
+       '</div>'+
+       '<p class="note">Room resources often carry capacity or booking notes in brackets — '+
+       '<b>Fellowship Hall (200) [AV required]</b> becomes <b>Fellowship Hall</b> with that box '+
+       'ticked. If a location is <em>nothing but</em> a bracketed note it is left alone rather '+
+       'than blanked.</p>') +
 
     fs("Motion", '<div class="row">'+
        fNum("speed","Scroll speed","Pixels per second on a 1080p screen. 0 = no scrolling.",0,200)+
