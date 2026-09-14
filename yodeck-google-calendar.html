@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Google Calendar Board — Yodeck Custom App</title>
+<style>
+/* ============================================================
+   SHARED
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+
+/* ============================================================
+   DISPLAY MODE  (html.disp)
+   ============================================================ */
+html.disp{font-size:calc(1.85vh * var(--sc,1));height:100%;overflow:hidden}
+html.disp body{height:100%;overflow:hidden;background:var(--bg);color:var(--fg);
+  font-family:var(--ff);}
+:root{
+  --bg:#0b0f14;--panel:#151d27;--panel2:#1c2634;--fg:#ffffff;--muted:#94a7bd;
+  --accent:#ffb340;--accentDim:rgba(255,179,64,.45);--hair:rgba(255,255,255,.10);
+  --gap:.75rem;--pad:1rem;--radius:.65rem;--loopgap:2.6rem;
+  --ff:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+html.dense{--gap:.45rem;--pad:.7rem;--radius:.5rem}
+
+.screen{height:100vh;display:flex;flex-direction:column;padding:1.5rem 1.8rem 1rem}
+.hdr{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+  gap:1.2rem;padding-bottom:.85rem;border-bottom:.16rem solid var(--accentDim);margin-bottom:.9rem}
+.brand{display:flex;align-items:center;gap:1rem;min-width:0}
+.brand img{height:3.6rem;width:auto;max-width:14rem;object-fit:contain;display:block}
+.brand h1{margin:0;font-size:2.15rem;font-weight:800;letter-spacing:-.015em;line-height:1.1}
+.brand .sub{margin:.2rem 0 0;font-size:1.05rem;color:var(--muted);font-weight:500}
+.clk{flex:0 0 auto;text-align:right}
+.clk .ct{font-size:2.05rem;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.clk .cd{font-size:1rem;color:var(--muted);margin-top:.3rem;font-weight:500}
+
+.vp{position:relative;flex:1 1 auto;overflow:hidden;min-height:0}
+.vp.masked{
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 1.8rem,#000 calc(100% - 2.4rem),transparent 100%);
+  mask-image:linear-gradient(to bottom,transparent 0,#000 1.8rem,#000 calc(100% - 2.4rem),transparent 100%);
+}
+.track{will-change:transform;backface-visibility:hidden}
+.copy.b{display:none}
+.track.loop .copy.a{padding-bottom:var(--loopgap)}
+.track.loop .copy.b{display:block}
+
+.day{display:flex;align-items:baseline;gap:.75rem;margin:1.5rem 0 .7rem;
+  padding-bottom:.35rem;border-bottom:.08rem solid var(--hair)}
+.copy .day:first-child{margin-top:0}
+.day .dn{font-size:1.2rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.day .dd{font-size:1rem;color:var(--muted);font-weight:600}
+
+.ev{display:flex;align-items:center;gap:var(--pad);padding:var(--pad);
+  border-radius:var(--radius);background:var(--panel);margin-bottom:var(--gap);
+  border-left:.35rem solid var(--ec,var(--accent))}
+.ev.alt{background:var(--panel2)}
+.ev.now{box-shadow:inset 0 0 0 .12rem var(--accentDim)}
+
+.tm{flex:0 0 auto;width:7.6rem;text-align:right;line-height:1.15}
+.tm .t0{display:block;font-size:.9rem;font-weight:800;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:.1rem}
+.tm .t1{display:block;font-size:1.35rem;font-weight:700;font-variant-numeric:tabular-nums}
+.tm .t2{display:block;font-size:1rem;font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:.12rem}
+.tm.ad .t1{font-size:1rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+
+.bd{flex:1 1 auto;min-width:0}
+.ttl{font-size:1.5rem;font-weight:650;line-height:1.22;overflow-wrap:anywhere}
+.loc{margin-top:.22rem;font-size:1.05rem;color:var(--muted);font-weight:500;
+  display:flex;align-items:flex-start;gap:.4rem;overflow-wrap:anywhere}
+.loc svg{width:1.02rem;height:1.02rem;flex:0 0 auto;margin-top:.14rem;opacity:.85}
+
+.badge{flex:0 0 auto;font-size:.82rem;font-weight:800;letter-spacing:.07em;
+  text-transform:uppercase;padding:.32rem .65rem;border-radius:99rem;
+  background:var(--ec,var(--accent));color:var(--ebc,#000);white-space:nowrap}
+
+.empty{min-height:55vh;display:flex;align-items:center;justify-content:center;
+  font-size:1.7rem;color:var(--muted);font-weight:600;text-align:center;padding:2rem}
+
+.ftr{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;
+  gap:1rem;padding-top:.7rem;font-size:.85rem;color:var(--muted);opacity:.75;font-weight:500}
+.ftr .err{color:#ff7b72;opacity:1;font-weight:700}
+
+.hint{max-width:52rem;margin:0 auto;padding:3rem 2rem;font-size:1.1rem;line-height:1.6}
+.hint h2{font-size:1.9rem;margin:0 0 1rem}
+.hint code{background:var(--panel2);padding:.15rem .4rem;border-radius:.3rem;font-size:.95em}
+.hint a{color:var(--accent)}
+
+/* ============================================================
+   CONFIG MODE  (html.cfg)
+   ============================================================ */
+html.cfg{font-size:16px}
+html.cfg body{background:#0d1117;color:#e6edf3;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  min-height:100vh}
+.wrap{max-width:1280px;margin:0 auto;padding:28px 24px 64px}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;
+  border-bottom:1px solid #21262d;padding-bottom:18px;margin-bottom:24px}
+.top h1{margin:0;font-size:26px;font-weight:800;letter-spacing:-.02em}
+.top p{margin:6px 0 0;color:#8b949e;font-size:14px;max-width:62ch;line-height:1.5}
+.lay{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:26px;align-items:start}
+@media (max-width:1000px){.lay{grid-template-columns:1fr}}
+
+fieldset{border:1px solid #21262d;border-radius:12px;padding:16px 18px 18px;margin:0 0 16px;background:#11161d}
+legend{padding:0 8px;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ffb340}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 14px}
+.f{display:flex;flex-direction:column;gap:5px;min-width:0}
+.f label{font-size:12px;font-weight:600;color:#9aa7b4}
+.f .hlp{font-size:11px;color:#6e7b8a;line-height:1.4}
+input[type=text],input[type=number],select,textarea{
+  background:#0d1117;border:1px solid #2b333d;color:#e6edf3;border-radius:8px;
+  padding:8px 10px;font:inherit;font-size:14px;width:100%;min-width:0}
+input:focus,select:focus,textarea:focus{outline:2px solid #ffb340;outline-offset:-1px;border-color:#ffb340}
+input[type=color]{width:100%;height:36px;padding:2px;background:#0d1117;border:1px solid #2b333d;border-radius:8px}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;color:#c9d1d9;padding-top:4px}
+.chk input{width:16px;height:16px;accent-color:#ffb340}
+.calrow{display:grid;grid-template-columns:minmax(0,2.4fr) minmax(0,1.2fr) 74px 34px;gap:8px;margin-bottom:8px;align-items:center}
+.calrow .x{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:8px;height:34px;cursor:pointer;font-size:16px;line-height:1}
+.calrow .x:hover{background:#33232a;color:#ff7b72}
+.btn{background:#ffb340;color:#1a1200;border:0;border-radius:8px;padding:9px 14px;
+  font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.btn.sec{background:#21262d;color:#e6edf3;border:1px solid #30363d}
+.bar{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+.sticky{position:sticky;top:24px}
+.prev{border:1px solid #21262d;border-radius:12px;overflow:hidden;background:#000}
+.prev .ph{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;
+  background:#11161d;border-bottom:1px solid #21262d;font-size:12px;color:#8b949e;font-weight:600}
+.prev .frame{position:relative;width:100%;aspect-ratio:16/9;background:#000}
+.prev iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.urlbox{margin-top:16px}
+.urlbox textarea{height:92px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.5}
+.note{font-size:12px;color:#8b949e;line-height:1.6;margin-top:10px}
+.note b{color:#c9d1d9}
+.tagline{font-size:11px;color:#6e7b8a;margin-top:2px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+"use strict";
+(function(){
+
+/* =====================================================================
+   CONFIG SCHEMA — every key here is a URL query parameter
+   ===================================================================== */
+var LOCAL_TZ = "America/New_York";
+try{ LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || LOCAL_TZ; }catch(e){}
+
+var DEFAULTS = {
+  // data
+  key:"", cal:"", days:7, tz:LOCAL_TZ, max:150, demo:0,
+  // header
+  title:"Upcoming Events", sub:"", logo:"", clock:1, h24:0, footer:1,
+  // content
+  group:1, showLoc:1, locSrc:"auto", shortLoc:0, allDay:1, allDayLabel:"All Day",
+  expand:1, badge:1, q:"", ex:"", empty:"No events scheduled",
+  // motion
+  speed:26, pause:4, refresh:10,
+  // style
+  bg:"0b0f14", panel:"151d27", fg:"ffffff", muted:"94a7bd", accent:"ffb340",
+  font:"Inter", sc:1, density:"comfortable", zebra:1
+};
+var COLOR_KEYS = {bg:1,panel:1,fg:1,muted:1,accent:1};
+var PALETTE = ["ffb340","4fa8ff","5ddc9a","ff7b9c","c792ea","ffd866","7ee0e6","ff9f43"];
+
+var QS = new URLSearchParams(location.search);
+var C  = {};
+Object.keys(DEFAULTS).forEach(function(k){
+  var v = QS.get(k);
+  if(v===null || v===""){ C[k]=DEFAULTS[k]; return; }
+  C[k] = (typeof DEFAULTS[k]==="number") ? (parseFloat(v)||0) : v;
+});
+C.days = Math.max(1, Math.min(120, Math.round(C.days)||7));
+
+/* =====================================================================
+   SMALL HELPERS
+   ===================================================================== */
+function hex(v){ v=String(v||"").replace(/^#/,""); return /^[0-9a-fA-F]{3,8}$/.test(v) ? "#"+v : "#"+DEFAULTS.accent; }
+function rgb(h){
+  h = hex(h).slice(1);
+  if(h.length===3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];
+}
+function rgba(h,a){ var c=rgb(h); return "rgba("+c[0]+","+c[1]+","+c[2]+","+a+")"; }
+function mix(h1,h2,t){
+  var a=rgb(h1), b=rgb(h2), o="#";
+  for(var i=0;i<3;i++){ var v=Math.round(a[i]+(b[i]-a[i])*t); o += ("0"+v.toString(16)).slice(-2); }
+  return o;
+}
+function lum(h){ var c=rgb(h); return (0.2126*c[0]+0.7152*c[1]+0.0722*c[2])/255; }
+function ink(h){ return lum(h) > 0.55 ? "#0b0f14" : "#ffffff"; }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(m){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]; }); }
+function el(tag,attrs,html){
+  var n=document.createElement(tag);
+  if(attrs) for(var k in attrs){ if(attrs[k]!=null) n.setAttribute(k,attrs[k]); }
+  if(html!=null) n.innerHTML=html;
+  return n;
+}
+
+/* ---- timezone-aware date math ---- */
+function tzOffset(d,tz){
+  try{
+    var p = new Intl.DateTimeFormat("en-US",{timeZone:tz,timeZoneName:"longOffset"})
+              .formatToParts(d).find(function(x){return x.type==="timeZoneName";});
+    var m = p && /GMT([+-]\d{2}:\d{2})/.exec(p.value);
+    return m ? m[1] : "+00:00";
+  }catch(e){ return "+00:00"; }
+}
+function ymdInTz(d,tz){
+  try{
+    var p = new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit"})
+              .formatToParts(d), o={};
+    p.forEach(function(x){ o[x.type]=x.value; });
+    return o.year+"-"+o.month+"-"+o.day;
+  }catch(e){ return d.toISOString().slice(0,10); }
+}
+function addDays(ymd,n){
+  var p=ymd.split("-");
+  var d=new Date(Date.UTC(+p[0],+p[1]-1,+p[2]));
+  d.setUTCDate(d.getUTCDate()+n);
+  return d.toISOString().slice(0,10);
+}
+function isoAtMidnight(ymd,tz){
+  var probe = new Date(ymd+"T12:00:00Z");
+  return ymd+"T00:00:00"+tzOffset(probe,tz);
+}
+function fmtTime(d){
+  try{
+    return new Intl.DateTimeFormat("en-US",{timeZone:C.tz,hour:"numeric",minute:"2-digit",
+      hour12:!Number(C.h24)}).format(d).replace(/\s?([AP])M/,function(_,x){return " "+x+"M";});
+  }catch(e){ return ""; }
+}
+function fmtDayName(ymd){
+  var todayY = ymdInTz(new Date(),C.tz);
+  if(ymd===todayY) return "Today";
+  if(ymd===addDays(todayY,1)) return "Tomorrow";
+  return new Intl.DateTimeFormat("en-US",{timeZone:"UTC",weekday:"long"}).format(new Date(ymd+"T12:00:00Z"));
+}
+function fmtDayDate(ymd){
+  return new Intl.DateTimeFormat("en-US",{timeZone:"UTC",month:"long",day:"numeric"})
+    .format(new Date(ymd+"T12:00:00Z"));
+}
+
+/* ---- calendar spec: "id|Label|hexcolor,id2|Label2|hex" ---- */
+function parseCals(s){
+  return String(s||"").split(",").map(function(part,i){
+    var f = part.split("|");
+    var id = (f[0]||"").trim();
+    if(!id) return null;
+    return { id:id, name:(f[1]||"").trim(), color:hex((f[2]||"").trim() || PALETTE[i%PALETTE.length]) };
+  }).filter(Boolean);
+}
+
+var PIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>';
+
+/* =====================================================================
+   DEMO DATA (used by ?demo=1 and by the config preview)
+   ===================================================================== */
+/* Returns items shaped exactly like Google Calendar API results, so demo mode
+   runs through the same normalize()/filter/expand code path as live data. */
+function demoRaw(){
+  var base = ymdInTz(new Date(), C.tz), off = tzOffset(new Date(), C.tz);
+  // [dayOffset, start, end, title, location, calIdx, allDaySpanDays]
+  var seed=[
+    [0,"09:00","10:15","Morning Prayer","Chapel",0],
+    [0,"12:00","13:00","Staff Lunch & Planning","Conference Room A",1],
+    [0,"18:30","20:00","Youth Group","Fellowship Hall",0],
+    [1,null,null,"Vacation Bible School — Setup Week","Education Wing",1,4],
+    [1,"10:00","11:30","Women's Bible Study","Room 201",0],
+    [1,"19:00","20:30","Choir Rehearsal","Sanctuary",0],
+    [2,"07:00","08:00","Men's Breakfast","Fellowship Hall",1],
+    [2,"17:00","18:30","Handbell Practice","Music Room",0],
+    [3,"09:30","11:00","Mothers of Preschoolers","Room 105 • Nursery",0],
+    [3,"19:00","21:00","Elder Board Meeting","Conference Room A",1],
+    [4,"16:00","18:00","Food Pantry Distribution","Parking Lot / Gym",0],
+    [5,"08:00","09:30","Property Team Workday","Grounds",1],
+    [6,"08:30","09:45","Traditional Worship","Sanctuary",0],
+    [6,"10:00","11:00","Sunday School (All Ages)","Education Wing",0],
+    [6,"11:00","12:15","Contemporary Worship","Worship Center",0]
+  ];
+  return seed.map(function(s){
+    var ymd = addDays(base, s[0]);
+    var it = { summary:s[3], location:s[4], status:"confirmed", _c:s[5]||0 };
+    if(!s[1]){ it.start={date:ymd}; it.end={date:addDays(ymd, s[6]||1)}; }
+    else { it.start={dateTime:ymd+"T"+s[1]+":00"+off}; it.end={dateTime:ymd+"T"+s[2]+":00"+off}; }
+    return it;
+  });
+}
+
+/* =====================================================================
+   FETCH FROM GOOGLE CALENDAR API v3
+   ===================================================================== */
+function eventsUrl(calId, timeMin, timeMax, pageToken){
+  var u = new URL("https://www.googleapis.com/calendar/v3/calendars/"+encodeURIComponent(calId)+"/events");
+  u.searchParams.set("key", C.key);
+  u.searchParams.set("timeMin", timeMin);
+  u.searchParams.set("timeMax", timeMax);
+  u.searchParams.set("singleEvents","true");
+  u.searchParams.set("orderBy","startTime");
+  u.searchParams.set("maxResults","2500");
+  u.searchParams.set("timeZone", C.tz);
+  u.searchParams.set("fields","nextPageToken,items(summary,location,status,start,end,attendees(displayName,resource))");
+  if(pageToken) u.searchParams.set("pageToken", pageToken);
+  return u.toString();
+}
+
+async function fetchCalendar(cal, timeMin, timeMax){
+  var items=[], token=null, guard=0;
+  do{
+    var res;
+    try{ res = await fetch(eventsUrl(cal.id, timeMin, timeMax, token), {cache:"no-store"}); }
+    catch(netErr){ throw new Error((cal.name || cal.id) + ": network unreachable"); }
+    var data = await res.json().catch(function(){ return {}; });
+    if(!res.ok){
+      var msg = (data && data.error && data.error.message) || ("HTTP "+res.status);
+      throw new Error((cal.name || cal.id) + ": " + msg);
+    }
+    items = items.concat(data.items || []);
+    token = data.nextPageToken || null;
+  } while(token && ++guard < 10);
+  return items;
+}
+
+function roomsOf(ev){
+  if(!ev.attendees) return "";
+  return ev.attendees.filter(function(a){ return a.resource; })
+    .map(function(a){ return a.displayName || ""; })
+    .filter(Boolean).join(" • ");
+}
+function locationOf(ev){
+  var loc  = (ev.location||"").trim();
+  var room = roomsOf(ev);
+  var src  = C.locSrc;
+  var out;
+  if(src==="rooms")        out = room || loc;
+  else if(src==="location")out = loc;
+  else if(src==="both")    out = [room, loc].filter(Boolean).join(" — ");
+  else                     out = loc || room;              // auto
+  if(Number(C.shortLoc) && out) out = out.split(",")[0].trim();
+  return out;
+}
+
+function passesFilter(title, loc){
+  var hay = (title+" "+loc).toLowerCase();
+  var inc = String(C.q||"").split(",").map(function(s){return s.trim().toLowerCase();}).filter(Boolean);
+  var exc = String(C.ex||"").split(",").map(function(s){return s.trim().toLowerCase();}).filter(Boolean);
+  if(inc.length && !inc.some(function(s){ return hay.indexOf(s)>-1; })) return false;
+  if(exc.length &&  exc.some(function(s){ return hay.indexOf(s)>-1; })) return false;
+  return true;
+}
+
+function normalize(raw, calIdx, winStart, winEnd){
+  var out=[];
+  raw.forEach(function(ev){
+    if(ev.status==="cancelled") return;
+    var title = (ev.summary||"").trim() || "(no title)";
+    var loc   = locationOf(ev);
+    if(!passesFilter(title, loc)) return;
+
+    if(ev.start && ev.start.date){                       // all-day
+      if(!Number(C.allDay)) return;
+      var s = ev.start.date;
+      var e = ev.end && ev.end.date ? addDays(ev.end.date,-1) : s;   // end.date is exclusive
+      if(!Number(C.expand)) e = s;
+      var d = s < winStart ? winStart : s;
+      var stop = e > winEnd ? winEnd : e, guard=0;
+      while(d <= stop && guard++ < 200){
+        out.push({title:title, loc:loc, allDay:true, dayKey:d, start:null, end:null, calIdx:calIdx});
+        d = addDays(d,1);
+      }
+    } else if(ev.start && ev.start.dateTime){            // timed
+      var st = new Date(ev.start.dateTime);
+      var en = ev.end && ev.end.dateTime ? new Date(ev.end.dateTime) : null;
+      var dk = ymdInTz(st, C.tz);
+      if(dk < winStart || dk > winEnd) return;
+      out.push({title:title, loc:loc, allDay:false, dayKey:dk,
+                start:st, end:en, calIdx:calIdx});
+    }
+  });
+  return out;
+}
+
+/* =====================================================================
+   DISPLAY MODE
+   ===================================================================== */
+var DISP = {
+  cals: [], events: [], pending: null, err: "",
+  updated: null, off: 0, last: 0, hold: 0, copyH: 0, looping: false, raf: null
+};
+
+function applyTheme(){
+  var r = document.documentElement.style;
+  var bg = hex(C.bg), panel = hex(C.panel), fg = hex(C.fg), accent = hex(C.accent);
+  r.setProperty("--bg", bg);
+  r.setProperty("--panel", panel);
+  r.setProperty("--panel2", mix(panel, fg, 0.07));
+  r.setProperty("--fg", fg);
+  r.setProperty("--muted", hex(C.muted));
+  r.setProperty("--accent", accent);
+  r.setProperty("--accentDim", rgba(accent, 0.45));
+  r.setProperty("--hair", rgba(fg, 0.12));
+  r.setProperty("--sc", C.sc || 1);
+  var fam = String(C.font||"Inter").trim();
+  if(fam && fam.toLowerCase()!=="system"){
+    var link = el("link",{rel:"stylesheet",
+      href:"https://fonts.googleapis.com/css2?family="+encodeURIComponent(fam).replace(/%20/g,"+")+
+           ":wght@400;500;600;700;800&display=swap"});
+    document.head.appendChild(link);
+    r.setProperty("--ff", '"'+fam+'", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif');
+  }
+  if(C.density==="compact") document.documentElement.classList.add("dense");
+}
+
+function buildShell(){
+  var s = el("div",{"class":"screen"});
+
+  var hdr = el("header",{"class":"hdr"});
+  var brand = el("div",{"class":"brand"});
+  if(C.logo) brand.appendChild(el("img",{src:C.logo,alt:""}));
+  var tw = el("div");
+  tw.appendChild(el("h1",null,esc(C.title)));
+  if(C.sub) tw.appendChild(el("p",{"class":"sub"},esc(C.sub)));
+  brand.appendChild(tw);
+  hdr.appendChild(brand);
+  if(Number(C.clock)){
+    var clk = el("div",{"class":"clk"});
+    clk.appendChild(el("div",{"class":"ct",id:"ct"},"&nbsp;"));
+    clk.appendChild(el("div",{"class":"cd",id:"cd"},"&nbsp;"));
+    hdr.appendChild(clk);
+  }
+  s.appendChild(hdr);
+
+  var vp = el("div",{"class":"vp",id:"vp"});
+  var track = el("div",{"class":"track",id:"track"});
+  track.appendChild(el("div",{"class":"copy a",id:"copyA"}));
+  track.appendChild(el("div",{"class":"copy b",id:"copyB"}));
+  vp.appendChild(track);
+  s.appendChild(vp);
+
+  if(Number(C.footer)){
+    var f = el("footer",{"class":"ftr"});
+    f.appendChild(el("div",{id:"fl"},""));
+    f.appendChild(el("div",{id:"fr"},""));
+    s.appendChild(f);
+  }
+
+  var root = document.getElementById("root");
+  root.innerHTML = "";
+  root.appendChild(s);
+}
+
+function listHTML(){
+  var evs = DISP.events.slice();
+  evs.sort(function(a,b){
+    if(a.dayKey!==b.dayKey) return a.dayKey < b.dayKey ? -1 : 1;
+    if(a.allDay!==b.allDay) return a.allDay ? -1 : 1;
+    if(a.start && b.start) return a.start - b.start;
+    return a.title.localeCompare(b.title);
+  });
+  if(C.max) evs = evs.slice(0, Math.max(1, Math.round(C.max)));
+  if(!evs.length) return '<div class="empty">'+esc(C.empty)+'</div>';
+
+  var now = Date.now(), html = "", lastDay = null, i = 0;
+  evs.forEach(function(e){
+    if(Number(C.group) && e.dayKey !== lastDay){
+      lastDay = e.dayKey; i = 0;
+      html += '<div class="day"><span class="dn">'+esc(fmtDayName(e.dayKey))+
+              '</span><span class="dd">'+esc(fmtDayDate(e.dayKey))+'</span></div>';
+    }
+    var cal = DISP.cals[e.calIdx] || {color:hex(C.accent), name:""};
+    var live = !e.allDay && e.start && e.end && now>=+e.start && now<=+e.end;
+    var cls = "ev" + (Number(C.zebra) && (i%2) ? " alt" : "") + (live ? " now" : "");
+    // When day headings are off, stamp each row with its date so the list stays readable.
+    var stamp = "";
+    if(!Number(C.group)){
+      var todayKey = ymdInTz(new Date(), C.tz);
+      if(e.dayKey !== todayKey){
+        stamp = '<span class="t0">'+esc(new Intl.DateTimeFormat("en-US",{timeZone:"UTC",
+          weekday:"short",month:"short",day:"numeric"}).format(new Date(e.dayKey+"T12:00:00Z")))+'</span>';
+      }
+    }
+    var time = stamp + (e.allDay
+      ? '<span class="t1">'+esc(C.allDayLabel)+'</span>'
+      : '<span class="t1">'+esc(fmtTime(e.start))+'</span>'+
+        (e.end ? '<span class="t2">'+esc(fmtTime(e.end))+'</span>' : ""));
+
+    html += '<div class="'+cls+'" style="--ec:'+cal.color+';--ebc:'+ink(cal.color)+'">'
+          +   '<div class="tm'+(e.allDay?" ad":"")+'">'+time+'</div>'
+          +   '<div class="bd"><div class="ttl">'+esc(e.title)+'</div>'
+          +     (Number(C.showLoc)&&e.loc ? '<div class="loc">'+PIN+'<span>'+esc(e.loc)+'</span></div>' : "")
+          +   '</div>'
+          +   (Number(C.badge)&&DISP.cals.length>1&&cal.name
+                ? '<div class="badge">'+esc(cal.name)+'</div>' : "")
+          + '</div>';
+    i++;
+  });
+  return html;
+}
+
+function render(){
+  var html = listHTML();
+  document.getElementById("copyA").innerHTML = html;
+  document.getElementById("copyB").innerHTML = html;
+  measure();
+  renderFooter();
+}
+
+function measure(){
+  var vp=document.getElementById("vp"), track=document.getElementById("track"),
+      a=document.getElementById("copyA");
+  track.classList.remove("loop"); vp.classList.remove("masked");
+  DISP.looping = false; DISP.off = 0; DISP.hold = 0; DISP.last = 0;
+  track.style.transform = "translate3d(0,0,0)";
+  if(Number(C.speed) <= 0) return;
+  if(a.scrollHeight > vp.clientHeight + 4){
+    track.classList.add("loop"); vp.classList.add("masked");
+    DISP.looping = true;
+    DISP.copyH = a.offsetHeight;                       // includes the loop gap padding
+    DISP.hold = performance.now() + Math.max(0,Number(C.pause))*1000;
+  }
+}
+
+function tick(ts){
+  DISP.raf = requestAnimationFrame(tick);
+  if(!DISP.looping){ DISP.last = ts; return; }
+  if(!DISP.last) DISP.last = ts;
+  var dt = Math.min(0.1, (ts - DISP.last)/1000);
+  DISP.last = ts;
+  if(ts >= DISP.hold){
+    var px = Number(C.speed) * (window.innerHeight/1080);
+    DISP.off += px * dt;
+    if(DISP.off >= DISP.copyH){
+      DISP.off -= DISP.copyH;
+      DISP.hold = ts + Math.max(0,Number(C.pause))*1000;
+      if(DISP.pending){ DISP.events = DISP.pending; DISP.pending = null; render(); return; }
+    }
+  }
+  document.getElementById("track").style.transform = "translate3d(0,"+(-DISP.off.toFixed(2))+"px,0)";
+}
+
+function renderFooter(){
+  if(!Number(C.footer)) return;
+  var fl=document.getElementById("fl"), fr=document.getElementById("fr");
+  if(!fl) return;
+  fl.innerHTML = DISP.err ? '<span class="err">'+esc(DISP.err)+'</span>'
+                          : esc(DISP.cals.map(function(c){return c.name||c.id;}).join("  •  "));
+  fr.textContent = DISP.updated ? "Updated "+fmtTime(DISP.updated) : "Loading…";
+}
+
+function startClock(){
+  if(!Number(C.clock)) return;
+  function beat(){
+    var n = new Date();
+    var ct=document.getElementById("ct"), cd=document.getElementById("cd");
+    if(!ct) return;
+    ct.textContent = fmtTime(n);
+    cd.textContent = new Intl.DateTimeFormat("en-US",{timeZone:C.tz,weekday:"long",
+      month:"long",day:"numeric"}).format(n);
+  }
+  beat(); setInterval(beat, 1000);
+}
+
+async function load(){
+  if(Number(C.demo)){
+    var tY = ymdInTz(new Date(), C.tz), wEnd = addDays(tY, C.days-1);
+    var raw = demoRaw(), demoAll = [], n = Math.max(1, DISP.cals.length);
+    for(var i=0;i<n;i++){
+      demoAll = demoAll.concat(normalize(
+        raw.filter(function(x){ return (x._c % n) === i; }), i, tY, wEnd));
+    }
+    DISP.events = demoAll; DISP.updated = new Date(); DISP.err = "";
+    render(); return;
+  }
+  var todayY   = ymdInTz(new Date(), C.tz);
+  var endY     = addDays(todayY, C.days);
+  var timeMin  = isoAtMidnight(todayY, C.tz);
+  var timeMax  = isoAtMidnight(endY,   C.tz);
+  var winEnd   = addDays(endY, -1);
+  var all = [], errs = [];
+
+  await Promise.all(DISP.cals.map(async function(cal, idx){
+    try{
+      var raw = await fetchCalendar(cal, timeMin, timeMax);
+      all = all.concat(normalize(raw, idx, todayY, winEnd));
+    }catch(e){ errs.push(e.message || String(e)); }
+  }));
+
+  DISP.err = errs.join("   |   ");
+  if(errs.length && !all.length && DISP.events.length){ renderFooter(); return; }  // keep last good data
+  DISP.updated = new Date();
+  if(DISP.looping && DISP.off > 2){ DISP.pending = all; renderFooter(); }
+  else { DISP.events = all; render(); }
+}
+
+function runDisplay(){
+  document.documentElement.className = "disp";
+  applyTheme();
+  DISP.cals = parseCals(C.cal);
+
+  if(!Number(C.demo) && (!DISP.cals.length || !C.key)){
+    buildShell();
+    document.getElementById("copyA").innerHTML =
+      '<div class="hint"><h2>Almost there</h2>'+
+      '<p>This board needs a Google API key and at least one calendar ID.</p>'+
+      '<p>Open this same file with <b>no query string</b> to use the built-in setup screen, '+
+      'or add <code>?demo=1</code> to preview it with sample events.</p></div>';
+    return;
+  }
+
+  buildShell();
+  startClock();
+  load();
+  var mins = Math.max(1, Number(C.refresh)||10);
+  setInterval(load, mins*60*1000);
+  DISP.raf = requestAnimationFrame(tick);
+
+  var rt;
+  window.addEventListener("resize", function(){ clearTimeout(rt); rt=setTimeout(measure,300); });
+  // midnight rollover: re-load shortly after the day changes
+  var lastDay = ymdInTz(new Date(), C.tz);
+  setInterval(function(){
+    var d = ymdInTz(new Date(), C.tz);
+    if(d !== lastDay){ lastDay = d; load(); }
+  }, 60*1000);
+}
+
+/* =====================================================================
+   CONFIG MODE
+   ===================================================================== */
+var FONTS = ["Inter","Roboto","Open Sans","Lato","Montserrat","Source Sans 3","Barlow","Oswald","Nunito Sans","system"];
+
+function runConfig(){
+  document.documentElement.className = "cfg";
+  var st = Object.assign({}, DEFAULTS);
+  st.cals = [{id:"",name:"",color:"#"+PALETTE[0]}];
+
+  document.getElementById("root").innerHTML =
+  '<div class="wrap">'+
+    '<div class="top"><div>'+
+      '<h1>Google Calendar Board — setup</h1>'+
+      '<p>Fill this in, watch the preview, then copy the URL at the bottom and paste it into a Yodeck '+
+      '<b>Web Page</b> media item. Every setting lives in the URL, so one hosted copy of this file can '+
+      'drive as many different boards as you like.</p>'+
+    '</div></div>'+
+    '<div class="lay"><div id="form"></div>'+
+    '<div class="sticky">'+
+      '<div class="prev"><div class="ph"><span>Live preview</span><span id="pmode">sample data</span></div>'+
+      '<div class="frame"><iframe id="pf" title="preview"></iframe></div></div>'+
+      '<div class="urlbox"><div class="f"><label>Display URL for Yodeck</label>'+
+      '<textarea id="url" readonly></textarea></div>'+
+      '<div class="bar">'+
+        '<button class="btn" id="copy">Copy URL</button>'+
+        '<button class="btn sec" id="open">Open full screen</button>'+
+        '<button class="btn sec" id="reset">Reset</button>'+
+      '</div>'+
+      '<p class="note"><b>Heads up:</b> the API key travels in this URL. Restrict it in Google Cloud to the '+
+      '<b>Google Calendar API</b> only, and add an HTTP-referrer restriction for the domain you host this '+
+      'file on. A restricted, read-only key that can only see public calendars is low risk, but treat the '+
+      'URL as semi-private anyway.</p>'+
+    '</div></div></div>'+
+  '</div>';
+
+  var form = document.getElementById("form");
+
+  function fs(legend, rowsHTML){
+    return '<fieldset><legend>'+legend+'</legend>'+rowsHTML+'</fieldset>';
+  }
+  function fText(k,label,help,ph){
+    return '<div class="f"><label for="i_'+k+'">'+label+'</label>'+
+      '<input type="text" id="i_'+k+'" data-k="'+k+'" placeholder="'+(ph||"")+'">'+
+      (help?'<span class="hlp">'+help+'</span>':'')+'</div>';
+  }
+  function fNum(k,label,help,min,max,step){
+    return '<div class="f"><label for="i_'+k+'">'+label+'</label>'+
+      '<input type="number" id="i_'+k+'" data-k="'+k+'" min="'+min+'" max="'+max+'" step="'+(step||1)+'">'+
+      (help?'<span class="hlp">'+help+'</span>':'')+'</div>';
+  }
+  function fSel(k,label,opts,help){
+    return '<div class="f"><label for="i_'+k+'">'+label+'</label><select id="i_'+k+'" data-k="'+k+'">'+
+      opts.map(function(o){ return '<option value="'+o[0]+'">'+o[1]+'</option>'; }).join("")+
+      '</select>'+(help?'<span class="hlp">'+help+'</span>':'')+'</div>';
+  }
+  function fChk(k,label){
+    return '<div class="f"><label class="chk"><input type="checkbox" id="i_'+k+'" data-k="'+k+'">'+label+'</label></div>';
+  }
+  function fCol(k,label){
+    return '<div class="f"><label for="i_'+k+'">'+label+'</label><input type="color" id="i_'+k+'" data-k="'+k+'"></div>';
+  }
+
+  form.innerHTML =
+    fs("Calendars", '<div id="cals"></div><div class="bar"><button class="btn sec" id="addcal">+ Add calendar</button></div>'+
+       '<p class="note">Calendar ID looks like <b>c_abc123@group.calendar.google.com</b> or an address such as '+
+       '<b>office@ctkcary.com</b>. Find it in Google Calendar → Settings → the calendar → <b>Integrate calendar</b>. '+
+       'The calendar must be set to <b>Make available to public</b>. The label shows as a colored badge when you list '+
+       'more than one calendar.</p>') +
+
+    fs("Google API", '<div class="row">'+
+       fText("key","API key","Google Cloud → Credentials → API key, restricted to the Calendar API","AIza…")+
+       fText("tz","Time zone","IANA name, e.g. America/New_York")+
+       '</div>') +
+
+    fs("Range &amp; filtering", '<div class="row">'+
+       fNum("days","Days to display","1 = today only. 7 = today + 6 more days.",1,120)+
+       fNum("max","Max events","Hard cap on how many rows are drawn",1,500)+
+       fText("q","Only show events containing","Comma-separated. Leave blank for everything.")+
+       fText("ex","Hide events containing","Comma-separated, e.g. HOLD, Tentative")+
+       '</div>') +
+
+    fs("Header", '<div class="row">'+
+       fText("title","Heading")+
+       fText("sub","Sub-heading","Optional line under the heading")+
+       fText("logo","Logo image URL","Optional. Must be a public https:// image.")+
+       '</div><div class="row">'+
+       fChk("clock","Show clock &amp; date")+
+       fChk("h24","24-hour time")+
+       fChk("footer","Show footer status line")+
+       '</div>') +
+
+    fs("What each event shows", '<div class="row">'+
+       fSel("locSrc","Location source",[["auto","Location, fall back to room"],["location","Location field only"],
+            ["rooms","Booked room resources only"],["both","Room — Location"]],
+            "Room resources only appear for Google Workspace calendars that expose them.")+
+       fText("allDayLabel","All-day label")+
+       fText("empty","Empty-state message")+
+       '</div><div class="row">'+
+       fChk("showLoc","Show location / room")+
+       fChk("shortLoc","Shorten location to text before the first comma")+
+       fChk("group","Group under day headings")+
+       fChk("allDay","Include all-day events")+
+       fChk("expand","Repeat multi-day events on every day")+
+       fChk("badge","Show calendar name badge")+
+       '</div>') +
+
+    fs("Motion", '<div class="row">'+
+       fNum("speed","Scroll speed","Pixels per second on a 1080p screen. 0 = no scrolling.",0,200)+
+       fNum("pause","Pause at top","Seconds to hold still before each pass",0,60)+
+       fNum("refresh","Refresh every","Minutes between calendar re-fetches",1,240)+
+       '</div>') +
+
+    fs("Styling", '<div class="row">'+
+       fCol("bg","Background")+fCol("panel","Event row")+fCol("fg","Text")+
+       fCol("muted","Secondary text")+fCol("accent","Accent")+
+       '</div><div class="row">'+
+       fSel("font","Font", FONTS.map(function(f){return [f, f==="system"?"System default":f];}),"Loaded from Google Fonts")+
+       fNum("sc","Text scale","1 = default. Try 1.2 for a far-away screen.",0.6,2.2,0.05)+
+       fSel("density","Density",[["comfortable","Comfortable"],["compact","Compact"]])+
+       fChk("zebra","Alternate row shading")+
+       '</div>');
+
+  /* ---- calendar rows ---- */
+  function drawCals(){
+    var box = document.getElementById("cals");
+    box.innerHTML = st.cals.map(function(c,i){
+      return '<div class="calrow">'+
+        '<input type="text" placeholder="calendar ID" data-c="id" data-i="'+i+'" value="'+esc(c.id)+'">'+
+        '<input type="text" placeholder="label (optional)" data-c="name" data-i="'+i+'" value="'+esc(c.name)+'">'+
+        '<input type="color" data-c="color" data-i="'+i+'" value="'+esc(c.color)+'">'+
+        '<button class="x" data-del="'+i+'" title="Remove">×</button></div>';
+    }).join("");
+    box.querySelectorAll("input").forEach(function(inp){
+      inp.addEventListener("input", function(){
+        st.cals[+inp.dataset.i][inp.dataset.c] = inp.value; sync();
+      });
+    });
+    box.querySelectorAll("[data-del]").forEach(function(b){
+      b.addEventListener("click", function(){
+        st.cals.splice(+b.dataset.del,1);
+        if(!st.cals.length) st.cals=[{id:"",name:"",color:"#"+PALETTE[0]}];
+        drawCals(); sync();
+      });
+    });
+  }
+  document.getElementById("addcal").addEventListener("click", function(){
+    st.cals.push({id:"",name:"",color:"#"+PALETTE[st.cals.length%PALETTE.length]});
+    drawCals(); sync();
+  });
+
+  /* ---- bind simple fields ---- */
+  Object.keys(DEFAULTS).forEach(function(k){
+    if(k==="cal"||k==="demo") return;
+    var inp = document.getElementById("i_"+k);
+    if(!inp) return;
+    if(inp.type==="checkbox") inp.checked = !!Number(st[k]);
+    else if(inp.type==="color") inp.value = hex(st[k]);
+    else inp.value = st[k];
+    inp.addEventListener("input", function(){
+      if(inp.type==="checkbox") st[k] = inp.checked ? 1 : 0;
+      else if(inp.type==="color") st[k] = inp.value.replace("#","");
+      else st[k] = inp.value;
+      sync();
+    });
+  });
+
+  function calParam(){
+    return st.cals.filter(function(c){ return c.id.trim(); })
+      .map(function(c){ return c.id.trim()+"|"+c.name.trim()+"|"+c.color.replace("#",""); })
+      .join(",");
+  }
+  function query(forPreview){
+    var p = new URLSearchParams();
+    var cal = calParam();
+    if(cal) p.set("cal", cal);
+    Object.keys(DEFAULTS).forEach(function(k){
+      if(k==="cal"||k==="demo") return;
+      var v = st[k];
+      if(COLOR_KEYS[k]) v = String(v).replace("#","");
+      if(String(v) === String(DEFAULTS[k])) return;
+      if(v==="" || v==null) return;
+      p.set(k, v);
+    });
+    if(forPreview && (!cal || !st.key.trim())) p.set("demo","1");
+    return p.toString();
+  }
+  function baseUrl(){ return location.origin==="null"
+      ? location.href.split("?")[0]
+      : location.origin + location.pathname; }
+
+  var t=null;
+  function sync(){
+    var live = calParam() && st.key.trim();
+    document.getElementById("pmode").textContent = live ? "live calendar data" : "sample data";
+    document.getElementById("url").value = baseUrl() + "?" + query(false);
+    clearTimeout(t);
+    t = setTimeout(function(){
+      document.getElementById("pf").src = baseUrl() + "?" + query(true);
+    }, 450);
+  }
+
+  document.getElementById("copy").addEventListener("click", function(){
+    var ta = document.getElementById("url");
+    ta.select();
+    if(navigator.clipboard) navigator.clipboard.writeText(ta.value).catch(function(){});
+    else { try{ document.execCommand("copy"); }catch(e){} }
+    var b=this, o=b.textContent; b.textContent="Copied ✓";
+    setTimeout(function(){ b.textContent=o; }, 1400);
+  });
+  document.getElementById("open").addEventListener("click", function(){
+    window.open(baseUrl()+"?"+query(true), "_blank");
+  });
+  document.getElementById("reset").addEventListener("click", function(){ location.href = baseUrl(); });
+
+  drawCals(); sync();
+}
+
+/* =====================================================================
+   BOOT
+   ===================================================================== */
+if(QS.get("cal") || QS.get("demo")) runDisplay();
+else runConfig();
+
+})();
+</script>
+</body>
+</html>
